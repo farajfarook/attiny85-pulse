@@ -7,126 +7,146 @@
 #define CLOCK_MAX 10000
 #define CLOCK_MIN 50
 
-#define INTERRUPT_PIN_INCR PCINT3 // Pin 3
-#define INTERRUPT_PIN_DECR PCINT4 // Pin 4
-#define INT_PIN_INCR PB3          // Interrupt pin of choice: Pin 3
-#define INT_PIN_DECR PB4          // Interrupt pin of choice: Pin 3
-#define MODE_PIN PB2              // Pin2
-#define LED_PIN PB1               // Pin 1
-#define SIG_PIN PB0               // Pin 0
-#define PCINT_VECTOR PCINT0_vect  // This step is not necessary - it's a naming thing for clarit
+#define PIN_INCR PB3 // Interrupt pin of choice: Pin 3
+#define PIN_DECR PB4 // Interrupt pin of choice: Pin 3
+#define PIN_MODE PB2 // Pin2
+#define PIN_LED PB1  // Pin 1
+#define PIN_SIG PB0  // Pin 0
 
-bool auto_mode = true;
+typedef bool ExecMode;
+#define MODE_AUTO 1
+#define MODE_MANUAL 0
 
-unsigned int auto_clock = 1000;
-unsigned int current_auto_clock = 0;
+unsigned int clk_auto = 1000;
+unsigned int clk_auto_exec = 0;
 
-unsigned int manual_clock = 1000;
-unsigned int current_manual_clock = 0;
+unsigned int clk_manual = 1000;
+unsigned int clk_manual_exec = 0;
 
-bool auto_tick = false;
-bool manual_tick = false;
+int tick_auto = LOW;
+int tick_manual = LOW;
 
-int mode_time = 0;
-int incr_time = 0;
-int decr_time = 0;
+int time_mode = 0, time_incr = 0, time_decr = 0;
+int data_mode, data_incr, data_decr;
 
 void setup()
 {
-    pinMode(LED_PIN, OUTPUT);
-    pinMode(SIG_PIN, OUTPUT);
+    pinMode(PIN_LED, OUTPUT);
+    pinMode(PIN_SIG, OUTPUT);
 
-    // Disable interrupts during setup
-    cli();
-
-    // Enable interrupt handler (ISR) for our chosen interrupt pin
-    PCMSK |= (1 << INTERRUPT_PIN_INCR);
-    PCMSK |= (1 << INTERRUPT_PIN_DECR);
-
-    // Enable PCINT interrupt in the general interrupt mask
-    GIMSK |= (1 << PCIE);
-
-    // Set our interrupt pin as input with a pullup to keep it stable
-    pinMode(INT_PIN_INCR, INPUT_PULLUP);
-    pinMode(INT_PIN_DECR, INPUT_PULLUP);
-
-    // Setup mode pin
-    pinMode(MODE_PIN, INPUT_PULLUP);
-
-    // Enable interrupts after setup
-    sei();
+    pinMode(PIN_MODE, INPUT_PULLUP);
+    pinMode(PIN_INCR, INPUT_PULLUP);
+    pinMode(PIN_DECR, INPUT_PULLUP);
 }
 
-ISR(PCINT_VECTOR)
+ExecMode fetch_mode(int time)
 {
-    int current_time = millis();
-
-    int current_incr = digitalRead(INT_PIN_INCR);
-    int current_incr_time_delta = current_time - incr_time;
-    if (current_incr == LOW && current_incr_time_delta > DEBOUNCE_TIME)
+    int data_exec = digitalRead(PIN_MODE);
+    int time_diff = time - time_mode;
+    if (data_exec != data_mode && time_diff > DEBOUNCE_TIME)
     {
-        if (auto_mode)
+        data_mode = data_exec;
+        time_mode = time;
+    }
+    return data_mode == LOW ? MODE_MANUAL : MODE_AUTO;
+}
+
+bool is_incr_clicked(int time)
+{
+    int data_exec = digitalRead(PIN_INCR);
+    int time_diff = time - time_incr;
+    if (data_exec != data_incr && time_diff > DEBOUNCE_TIME)
+    {
+        data_incr = data_exec;
+        time_incr = time;
+    }
+    return data_incr == LOW;
+}
+
+bool is_decr_clicked(int time)
+{
+    int data_exec = digitalRead(PIN_DECR);
+    int time_diff = time - time_decr;
+    if (data_exec != data_decr && time_diff > DEBOUNCE_TIME)
+    {
+        data_decr = data_exec;
+        time_decr = time;
+    }
+    return data_decr == LOW;
+}
+
+void manual_clk_exec()
+{
+    if (clk_manual_exec >= clk_manual)
+    {
+        tick_manual = false;
+    }
+    else
+    {
+        tick_manual = true;
+        clk_manual_exec++;
+    }
+}
+
+void manual_clk_evt(bool incr, bool decr)
+{
+    if (decr || incr)
+    {
+        clk_manual_exec = 0;
+    }
+}
+
+void auto_clk_exec()
+{
+    if (clk_auto_exec >= clk_auto)
+    {
+        tick_auto = !tick_auto;
+        clk_auto_exec = 0;
+    }
+    else
+    {
+        clk_auto_exec++;
+    }
+}
+
+void auto_clk_evt(bool incr, bool decr)
+{
+    if (incr)
+    {
+        clk_auto_exec = 0;
+        clk_auto += clk_auto / 4;
+        if (clk_auto > CLOCK_MAX)
         {
-            incr_time = current_time;
-            auto_clock += auto_clock / 4;
-            if (auto_clock > CLOCK_MAX)
-            {
-                auto_clock = CLOCK_MAX;
-            }
+            clk_auto = CLOCK_MAX;
         }
     }
-
-    int current_decr = digitalRead(INT_PIN_DECR);
-    int current_decr_time_delta = current_time - decr_time;
-    if (current_decr == LOW && current_decr_time_delta > DEBOUNCE_TIME)
+    if (decr)
     {
-        if (auto_mode)
+        clk_auto_exec = 0;
+        clk_auto -= clk_auto / 4;
+        if (clk_auto < CLOCK_MIN)
         {
-            decr_time = current_time;
-            auto_clock -= auto_clock / 4;
-            if (auto_clock < CLOCK_MIN)
-            {
-                auto_clock = CLOCK_MIN;
-            }
+            clk_auto = CLOCK_MIN;
         }
     }
 }
 
 void loop()
 {
-    bool current_mode = digitalRead(MODE_PIN) == HIGH;
-    int current_time = millis();
-    int mode_time_delta = current_time - mode_time;
-    if (current_mode != auto_mode && mode_time_delta > DEBOUNCE_TIME)
-    {
-        current_auto_clock = 0;
-        current_manual_clock = 0;
-        auto_mode = current_mode;
-        mode_time = current_time;
-    }
+    int time = millis();
+    ExecMode mode = fetch_mode(time);
+    bool decr = is_decr_clicked(time);
+    bool incr = is_incr_clicked(time);
 
-    if (current_auto_clock >= auto_clock)
-    {
-        auto_tick = !auto_tick;
-        current_auto_clock = 0;
-    }
+    if (mode == MODE_AUTO)
+        auto_clk_evt(incr, decr);
     else
-    {
-        current_auto_clock++;
-    }
+        manual_clk_evt(incr, decr);
 
-    if (current_manual_clock >= manual_clock)
-    {
-        manual_tick = false;
-    }
-    else
-    {
-        manual_tick = true;
-        current_manual_clock++;
-    }
+    auto_clk_exec();
+    manual_clk_exec();
 
-    int tick = auto_mode ? auto_tick : manual_tick;
-    digitalWrite(SIG_PIN, tick);
-    digitalWrite(LED_PIN, auto_tick);
+    digitalWrite(PIN_SIG, mode == MODE_AUTO ? tick_auto : tick_manual);
+    digitalWrite(PIN_LED, tick_auto);
     delay(1);
 }
