@@ -3,7 +3,7 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
-#define DEBOUNCE_TIME 1000
+#define DEBOUNCE_TIME 500
 #define CLOCK_MAX 10000
 #define CLOCK_MIN 50
 
