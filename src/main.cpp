@@ -20,7 +20,7 @@ typedef bool ExecMode;
 unsigned int clk_auto = 1000;
 unsigned int clk_auto_exec = 0;
 
-unsigned int clk_manual = 1000;
+unsigned int clk_manual = 500;
 unsigned int clk_manual_exec = 0;
 
 int tick_auto = LOW;
