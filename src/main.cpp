@@ -14,8 +14,8 @@
 #define PIN_SIG PB0    // Pin 0
 
 typedef bool ExecMode;
-#define MODE_AUTO 1
-#define MODE_MANUAL 0
+#define MODE_AUTO 0
+#define MODE_MANUAL 1
 
 unsigned int clk_auto = 1000;
 unsigned int clk_auto_exec = 0;
